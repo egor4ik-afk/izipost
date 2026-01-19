@@ -4,7 +4,8 @@ import {
   ListObjectsV2Command, 
   PutObjectCommand, 
   DeleteObjectCommand, 
-  CopyObjectCommand 
+  CopyObjectCommand,
+  ListObjectsV2CommandOutput // <--- Добавили импорт типа ответа
 } from "@aws-sdk/client-s3";
 
 const s3Client = new S3Client({
@@ -79,7 +80,7 @@ export async function renameFileInS3(oldKey: string, newKey: string) {
   // 1. Копируем
   await s3Client.send(new CopyObjectCommand({
     Bucket: BUCKET,
-    CopySource: `${BUCKET}/${oldKey}`, // Формат для Yandex/AWS: Bucket/Key
+    CopySource: encodeURI(`${BUCKET}/${oldKey}`), // encodeURI полезен для кириллицы/пробелов
     Key: newKey
   }));
 
@@ -100,7 +101,9 @@ export async function renameFolderInS3(oldPrefix: string, newPrefix: string) {
           Prefix: oldPrefix,
           ContinuationToken: continuationToken
       });
-      const data = await s3Client.send(listCommand);
+      
+      // Явно указываем тип возвращаемого значения, чтобы TS видел NextContinuationToken
+      const data: ListObjectsV2CommandOutput = await s3Client.send(listCommand);
 
       if (data.Contents && data.Contents.length > 0) {
           for (const file of data.Contents) {
@@ -112,7 +115,7 @@ export async function renameFolderInS3(oldPrefix: string, newPrefix: string) {
               // Копируем
               await s3Client.send(new CopyObjectCommand({
                   Bucket: BUCKET,
-                  CopySource: `${BUCKET}/${file.Key}`,
+                  CopySource: encodeURI(`${BUCKET}/${file.Key}`),
                   Key: newFileKey
               }));
               
