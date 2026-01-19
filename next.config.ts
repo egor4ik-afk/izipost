@@ -1,8 +1,10 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   experimental: {
-    serverActions: true,
-    bodySizeLimit: '10mb', // Ставим, например, 10 мегабайт
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
   env: {
     YANDEX_ACCESS_KEY_ID: process.env.YANDEX_ACCESS_KEY_ID,
@@ -23,4 +25,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
