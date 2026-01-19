@@ -14,10 +14,13 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.YANDEX_BUCKET_NAME;
 
-export const maxDuration = 30; // Уменьшаем таймаут, так как должно работать быстро
+// Увеличиваем лимит, так как networkidle требует времени
+export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  let browser = null;
+  
   try {
     const { url } = await req.json();
 
@@ -28,17 +31,18 @@ export async function POST(req: Request) {
     const isLocal = process.env.NODE_ENV === 'development';
     const localExecutablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       args: isLocal ? [] : [
           ...chromium.args, 
           '--hide-scrollbars', 
           '--disable-web-security',
-          '--disable-gpu', // Отключаем GPU для скорости
+          '--disable-gpu',
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Экономия памяти
+          '--disable-dev-shm-usage',
+          '--font-render-hinting=none', // Улучшает рендеринг шрифтов
       ],
-      defaultViewport: { width: 1280, height: 720 },
+      defaultViewport: { width: 1920, height: 1080 }, // FullHD дает больше контекста
       executablePath: isLocal 
         ? localExecutablePath 
         : await chromium.executablePath(
@@ -49,40 +53,47 @@ export async function POST(req: Request) {
 
     const page = await browser.newPage();
     
-    // Блокируем загрузку тяжелых ресурсов, которые не нужны для скриншота (видео, шрифты, если не критично)
-    // Это значительно ускоряет загрузку страницы
+    // Блокируем ТОЛЬКО тяжелые медиа. 
+    // WebSocket и XHR/Fetch оставляем, иначе SPA сайты будут пустыми.
     await page.setRequestInterception(true);
     page.on('request', (req) => {
         const resourceType = req.resourceType();
-        if (['image', 'stylesheet', 'script', 'font'].includes(resourceType)) {
-            req.continue();
-        } else if (['media', 'websocket', 'manifest', 'other'].includes(resourceType)) {
-            // Блокируем видео и сокеты
-            req.abort();
+        // Блокируем только явный мусор для скриншота
+        if (['media', 'font'].includes(resourceType)) { 
+            // Шрифты иногда блокируют, но лучше оставить (или блочить, если скорость критична)
+            // Если блокируешь шрифты, текст может исчезнуть. Я рекомендую НЕ блокировать шрифты для красоты.
+            req.continue(); 
+        } else if (resourceType === 'image') {
+             req.continue();
         } else {
-            req.continue();
+             req.continue();
         }
     });
 
-    // User-Agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
 
-    // --- ГЛАВНОЕ УСКОРЕНИЕ ---
-    // 'load' срабатывает, когда загрузился HTML + картинки + CSS. 
-    // Это быстрее, чем ждать 'networkidle2' (остановка сети).
+    // --- ИСПРАВЛЕНИЕ ПУСТОТЫ ---
+    // 1. waitUntil: 'networkidle2' — ждет, пока загрузка данных почти прекратится (важно для React/Next.js сайтов)
+    // 2. timeout: 15000 — даем 15 сек на загрузку, иначе делаем скрин того, что есть
     try {
-        await page.goto(url, { waitUntil: 'load', timeout: 12000 });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
     } catch (e) {
-        // Если сайт грузится дольше 12 сек - всё равно пытаемся сделать скриншот того, что успело загрузиться
-        console.log('Timeout hit, taking screenshot anyway...');
+        console.log('Timeout waiting for networkidle, taking screenshot anyway...');
     }
 
-    // Качество 75 - золотая середина (быстро жмется, мало весит, выглядит норм для превью)
-    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 90 });
+    // Дополнительная задержка 1с для анимаций появления (fade-in), которые часто используются
+    await new Promise(r => setTimeout(r, 1000));
 
-    await browser.close();
+    // Скроллим страницу немного вниз, чтобы триггернуть lazy-load картинки (частая проблема пустоты)
+    await page.evaluate(async () => {
+        window.scrollBy(0, window.innerHeight);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        window.scrollTo(0, 0);
+    });
 
-    // Формируем имя: domain.ru.jpg
+    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 85 });
+
+    // Формируем имя
     let cleanName = '';
     try {
         const urlObj = new URL(url);
@@ -90,19 +101,17 @@ export async function POST(req: Request) {
     } catch (e) {
         cleanName = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '');
     }
-    
     const fileName = `preview/${cleanName}.jpg`;
 
-    // Загрузка
+    // Загрузка в S3
     await s3.send(new PutObjectCommand({
       Bucket: BUCKET,
       Key: fileName,
       Body: screenshotBuffer,
       ContentType: 'image/jpeg',
-      CacheControl: 'max-age=0, no-cache, no-store, must-revalidate', // Запрещаем кэш S3
+      CacheControl: 'max-age=0, no-cache, no-store, must-revalidate',
     }));
 
-    // Добавляем timestamp, чтобы вы сразу увидели новую картинку
     const fileUrl = `https://storage.yandexcloud.net/${BUCKET}/${fileName}?t=${Date.now()}`;
 
     return NextResponse.json({ success: true, url: fileUrl });
@@ -110,5 +119,9 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Screenshot error:', error);
     return NextResponse.json({ error: error.message || 'Failed' }, { status: 500 });
+  } finally {
+      if (browser) {
+          await browser.close();
+      }
   }
 }
