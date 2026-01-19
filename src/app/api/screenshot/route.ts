@@ -26,8 +26,6 @@ export async function POST(req: Request) {
     }
 
     const isLocal = process.env.NODE_ENV === 'development';
-    
-    // Путь к Chrome для локального Windows
     const localExecutablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
     const browser = await puppeteer.launch({
@@ -36,33 +34,50 @@ export async function POST(req: Request) {
       executablePath: isLocal 
         ? localExecutablePath 
         : await chromium.executablePath(
-            // 👇 ВАЖНО: Добавляем ссылку на pack.tar для Vercel
             'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar'
           ),
-      headless: true, // Используем true вместо chromium.headless
+      headless: true,
     });
 
     const page = await browser.newPage();
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
 
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
+    // УСКОРЕНИЕ: networkidle2 быстрее, чем networkidle0
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
 
-    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 80 });
+    // КАЧЕСТВО: 95 (было 80)
+    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 95 });
 
     await browser.close();
 
-    const cleanName = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-');
-    const fileName = `preview/${cleanName}-${Date.now()}.jpg`;
+    // НОВОЕ ИМЯ: dragonbarber.ru.jpg
+    let cleanName = '';
+    try {
+        const urlObj = new URL(url);
+        cleanName = urlObj.hostname.replace('www.', ''); // убираем www
+    } catch (e) {
+        // Если URL кривой, просто чистим строку
+        cleanName = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '');
+    }
+
+    // Если хотите сохранять путь (например dragonbarber.ru-about.jpg), раскомментируйте ниже:
+    // const pathName = new URL(url).pathname.replace(/\//g, '-');
+    // if (pathName && pathName !== '-') cleanName += pathName;
+
+    const fileName = `preview/${cleanName}.jpg`;
 
     await s3.send(new PutObjectCommand({
       Bucket: BUCKET,
       Key: fileName,
       Body: screenshotBuffer,
       ContentType: 'image/jpeg',
+      // CacheControl: 'no-cache', // Можно добавить, чтобы браузер не кэшировал старую картинку
     }));
 
-    const fileUrl = `https://storage.yandexcloud.net/${BUCKET}/${fileName}`;
+    // Добавляем timestamp в URL только для отображения (чтобы сбросить кэш браузера), 
+    // но сам файл в хранилище будет перезаписан под тем же именем.
+    const fileUrl = `https://storage.yandexcloud.net/${BUCKET}/${fileName}?t=${Date.now()}`;
 
     return NextResponse.json({ success: true, url: fileUrl });
 
