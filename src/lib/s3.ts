@@ -1,6 +1,11 @@
-
 // src/lib/s3.ts
-import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { 
+  S3Client, 
+  ListObjectsV2Command, 
+  PutObjectCommand, 
+  DeleteObjectCommand, 
+  CopyObjectCommand 
+} from "@aws-sdk/client-s3";
 
 const s3Client = new S3Client({
   region: process.env.YANDEX_REGION as string,
@@ -13,29 +18,28 @@ const s3Client = new S3Client({
 
 const BUCKET = process.env.YANDEX_BUCKET_NAME as string;
 
-// Получить содержимое конкретной "папки"
+// ... (функции getFilesByFolder, uploadFileToS3, deleteFileFromS3 оставляем как есть) ...
+
 export async function getFilesByFolder(prefix = "") {
   try {
     const command = new ListObjectsV2Command({
       Bucket: BUCKET,
-      Prefix: prefix, // Какую папку смотрим
-      Delimiter: "/", // Важно: это заставляет S3 группировать подпапки
+      Prefix: prefix,
+      Delimiter: "/", 
     });
 
     const data = await s3Client.send(command);
 
-    // 1. Папки (CommonPrefixes)
     const folders = (data.CommonPrefixes || [])
-      .filter(p => p.Prefix) // Make sure Prefix is not undefined
+      .filter(p => p.Prefix)
       .map((p) => ({
-        name: p.Prefix!.replace(prefix, "").replace("/", ""), // Убираем лишние слэши для отображения
-        path: p.Prefix!, // Полный путь для API
+        name: p.Prefix!.replace(prefix, "").replace("/", ""),
+        path: p.Prefix!,
         type: "folder" as const
       }));
 
-    // 2. Файлы (Contents)
     const files = (data.Contents || [])
-      .filter((f) => f.Key && f.Key !== prefix) // Убираем саму папку-плейсхолдер, если есть
+      .filter((f) => f.Key && f.Key !== prefix)
       .map((f) => ({
         name: f.Key!.replace(prefix, ""),
         path: f.Key!,
@@ -51,7 +55,6 @@ export async function getFilesByFolder(prefix = "") {
   }
 }
 
-// Загрузка файла
 export async function uploadFileToS3(buffer: Buffer, key: string, contentType: string) {
   const command = new PutObjectCommand({
     Bucket: BUCKET,
@@ -62,11 +65,64 @@ export async function uploadFileToS3(buffer: Buffer, key: string, contentType: s
   await s3Client.send(command);
 }
 
-// Удаление файла
 export async function deleteFileFromS3(key: string) {
   const command = new DeleteObjectCommand({
     Bucket: BUCKET,
     Key: key,
   });
   await s3Client.send(command);
+}
+
+// === НОВЫЕ ФУНКЦИИ ===
+
+export async function renameFileInS3(oldKey: string, newKey: string) {
+  // 1. Копируем
+  await s3Client.send(new CopyObjectCommand({
+    Bucket: BUCKET,
+    CopySource: `${BUCKET}/${oldKey}`, // Формат для Yandex/AWS: Bucket/Key
+    Key: newKey
+  }));
+
+  // 2. Удаляем старый
+  await s3Client.send(new DeleteObjectCommand({
+    Bucket: BUCKET,
+    Key: oldKey
+  }));
+}
+
+export async function renameFolderInS3(oldPrefix: string, newPrefix: string) {
+  let continuationToken: string | undefined = undefined;
+  
+  // Проходим по всем файлам в папке (включая подпапки)
+  do {
+      const listCommand = new ListObjectsV2Command({
+          Bucket: BUCKET,
+          Prefix: oldPrefix,
+          ContinuationToken: continuationToken
+      });
+      const data = await s3Client.send(listCommand);
+
+      if (data.Contents && data.Contents.length > 0) {
+          for (const file of data.Contents) {
+              if (!file.Key) continue;
+              
+              // Заменяем старый префикс папки на новый в пути файла
+              const newFileKey = file.Key.replace(oldPrefix, newPrefix);
+              
+              // Копируем
+              await s3Client.send(new CopyObjectCommand({
+                  Bucket: BUCKET,
+                  CopySource: `${BUCKET}/${file.Key}`,
+                  Key: newFileKey
+              }));
+              
+              // Удаляем
+              await s3Client.send(new DeleteObjectCommand({
+                  Bucket: BUCKET,
+                  Key: file.Key
+              }));
+          }
+      }
+      continuationToken = data.NextContinuationToken;
+  } while (continuationToken);
 }
