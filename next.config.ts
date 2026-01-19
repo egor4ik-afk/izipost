@@ -2,6 +2,7 @@
 const nextConfig = {
   experimental: {
     serverActions: true,
+    bodySizeLimit: '10mb', // Ставим, например, 10 мегабайт
   },
   env: {
     YANDEX_ACCESS_KEY_ID: process.env.YANDEX_ACCESS_KEY_ID,
