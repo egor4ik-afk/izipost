@@ -14,7 +14,7 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.YANDEX_BUCKET_NAME;
 
-export const maxDuration = 60; 
+export const maxDuration = 30; // Уменьшаем таймаут, так как должно работать быстро
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
@@ -29,7 +29,15 @@ export async function POST(req: Request) {
     const localExecutablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
     const browser = await puppeteer.launch({
-      args: isLocal ? [] : [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
+      args: isLocal ? [] : [
+          ...chromium.args, 
+          '--hide-scrollbars', 
+          '--disable-web-security',
+          '--disable-gpu', // Отключаем GPU для скорости
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage', // Экономия памяти
+      ],
       defaultViewport: { width: 1280, height: 720 },
       executablePath: isLocal 
         ? localExecutablePath 
@@ -41,48 +49,66 @@ export async function POST(req: Request) {
 
     const page = await browser.newPage();
     
+    // Блокируем загрузку тяжелых ресурсов, которые не нужны для скриншота (видео, шрифты, если не критично)
+    // Это значительно ускоряет загрузку страницы
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+        const resourceType = req.resourceType();
+        if (['image', 'stylesheet', 'script', 'font'].includes(resourceType)) {
+            req.continue();
+        } else if (['media', 'websocket', 'manifest', 'other'].includes(resourceType)) {
+            // Блокируем видео и сокеты
+            req.abort();
+        } else {
+            req.continue();
+        }
+    });
+
+    // User-Agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
 
-    // УСКОРЕНИЕ: networkidle2 быстрее, чем networkidle0
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+    // --- ГЛАВНОЕ УСКОРЕНИЕ ---
+    // 'load' срабатывает, когда загрузился HTML + картинки + CSS. 
+    // Это быстрее, чем ждать 'networkidle2' (остановка сети).
+    try {
+        await page.goto(url, { waitUntil: 'load', timeout: 12000 });
+    } catch (e) {
+        // Если сайт грузится дольше 12 сек - всё равно пытаемся сделать скриншот того, что успело загрузиться
+        console.log('Timeout hit, taking screenshot anyway...');
+    }
 
-    // КАЧЕСТВО: 95 (было 80)
-    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 95 });
+    // Качество 75 - золотая середина (быстро жмется, мало весит, выглядит норм для превью)
+    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 90 });
 
     await browser.close();
 
-    // НОВОЕ ИМЯ: dragonbarber.ru.jpg
+    // Формируем имя: domain.ru.jpg
     let cleanName = '';
     try {
         const urlObj = new URL(url);
-        cleanName = urlObj.hostname.replace('www.', ''); // убираем www
+        cleanName = urlObj.hostname.replace('www.', '');
     } catch (e) {
-        // Если URL кривой, просто чистим строку
         cleanName = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '');
     }
-
-    // Если хотите сохранять путь (например dragonbarber.ru-about.jpg), раскомментируйте ниже:
-    // const pathName = new URL(url).pathname.replace(/\//g, '-');
-    // if (pathName && pathName !== '-') cleanName += pathName;
-
+    
     const fileName = `preview/${cleanName}.jpg`;
 
+    // Загрузка
     await s3.send(new PutObjectCommand({
       Bucket: BUCKET,
       Key: fileName,
       Body: screenshotBuffer,
       ContentType: 'image/jpeg',
-      // CacheControl: 'no-cache', // Можно добавить, чтобы браузер не кэшировал старую картинку
+      CacheControl: 'max-age=0, no-cache, no-store, must-revalidate', // Запрещаем кэш S3
     }));
 
-    // Добавляем timestamp в URL только для отображения (чтобы сбросить кэш браузера), 
-    // но сам файл в хранилище будет перезаписан под тем же именем.
+    // Добавляем timestamp, чтобы вы сразу увидели новую картинку
     const fileUrl = `https://storage.yandexcloud.net/${BUCKET}/${fileName}?t=${Date.now()}`;
 
     return NextResponse.json({ success: true, url: fileUrl });
 
   } catch (error: any) {
     console.error('Screenshot error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to take screenshot' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed' }, { status: 500 });
   }
 }
