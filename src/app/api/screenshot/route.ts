@@ -3,7 +3,6 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium-min';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
-// Настраиваем S3 Клиент
 const s3 = new S3Client({
   region: process.env.YANDEX_REGION,
   endpoint: "https://storage.yandexcloud.net",
@@ -28,27 +27,25 @@ export async function POST(req: Request) {
 
     const isLocal = process.env.NODE_ENV === 'development';
     
-    // Путь для локального Chrome (Windows)
+    // Путь к Chrome для локального Windows
     const localExecutablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-
-    // Настройка графики (опционально для sparticuz)
-    // chromium.setGraphicsMode = false; // Можно убрать, если вызывает ошибки типов
 
     const browser = await puppeteer.launch({
       args: isLocal ? [] : [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
       defaultViewport: { width: 1280, height: 720 },
       executablePath: isLocal 
         ? localExecutablePath 
-        : await chromium.executablePath(),
-      // ИСПРАВЛЕНИЕ: Вместо chromium.headless используем просто true
-      headless: true, 
+        : await chromium.executablePath(
+            // 👇 ВАЖНО: Добавляем ссылку на pack.tar для Vercel
+            'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar'
+          ),
+      headless: true, // Используем true вместо chromium.headless
     });
 
     const page = await browser.newPage();
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
 
-    // Ждем, пока сеть освободится (значит картинки загрузились)
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
 
     const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 80 });
