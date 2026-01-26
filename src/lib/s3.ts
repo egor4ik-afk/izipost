@@ -19,7 +19,9 @@ const s3Client = new S3Client({
 
 const BUCKET = process.env.YANDEX_BUCKET_NAME as string;
 
-// ... (функции getFilesByFolder, uploadFileToS3, deleteFileFromS3 оставляем как есть) ...
+export { s3Client as s3, BUCKET as bucketName };
+
+// ... (остальные функции) ...
 
 export async function getFilesByFolder(prefix = "") {
   try {
