@@ -18,8 +18,6 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'storage.yandexcloud.net',
-        port: '',
-        pathname: '/relaxdev/**',
       },
     ],
   },
