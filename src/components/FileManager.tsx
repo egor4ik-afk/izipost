@@ -5,7 +5,7 @@ import { fetchFiles, uploadFile, deleteFile, createFolder, renameItem } from '@/
 import Image from 'next/image';
 
 // --- КОНСТАНТЫ ---
-const MAX_FILE_SIZE = 4.4 * 1024 * 1024; // Лимит Vercel на ОДИН файл
+// const MAX_FILE_SIZE = 4.4 * 1024 * 1024; // Лимит Vercel на ОДИН файл
 
 // --- ИКОНКИ ---
 const Icons = {
@@ -127,10 +127,10 @@ export default function FileManager() {
         const file = files[i];
         setUploadProgress(`Загрузка ${i + 1} из ${files.length}`);
 
-        if (file.size > MAX_FILE_SIZE) {
+        /* if (file.size > MAX_FILE_SIZE) {
             alert(`⚠️ Файл "${file.name}" пропущен: слишком большой (>4.4MB)`);
             continue;
-        }
+        } */
 
         const formData = new FormData();
         formData.append('file', file);
