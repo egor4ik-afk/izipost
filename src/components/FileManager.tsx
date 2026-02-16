@@ -21,7 +21,7 @@ const Icons = {
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 text-indigo-400 dark:text-indigo-500 mx-auto">
       <path d="M19.5 21a1.5 1.5 0 0 0 1.5-1.5v-3a1.5 1.5 0 0 0-1.5-1.5h-10.5a1.5 1.5 0 0 0-1.5 1.5v3a1.5 1.5 0 0 0 1.5 1.5h10.5Z" opacity="0.4" />
       <path d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75Z" />
-      <path fillRule="evenodd" d="M3.56 9.682A3 3 0 0 1 6.38 7.5h11.24a3 3 0 0 1 2.82 2.182l1.626 6.503A3 3 0 0 1 19.153 20H4.847a3 3 0 0 1-2.913-3.815l1.626-6.503ZM6.236 9.77a1.5 1.5 0 0 1 1.41-.77h8.708a1.5 1.5 0 0 1 1.41.77l1.24 4.962a.75.75 0 0 1-.728.932H5.724a.75.75 0 0 1-.728-.932l1.24-4.962Z" clipRule="evenodd" />
+      <path fillRule="evenodd" d="M3.56 9.682A3 3 0 0 1 6.38 7.5h11.24a3 3 0 0 1 2.82 2.182l1.626 6.503A3 3 0 0 1 19.153 20H4.847a3 3 0 0 1-2.913-3.815l1.626-6.503ZM6.236 9.77a1.5 1.5 0 0 1 1.41-.77h8.708a1.5 1.5 0 0 1 1.41.77l1.24-4.962a.75.75 0 0 1-.728.932H5.724a.75.75 0 0 1-.728-.932l1.24-4.962Z" clipRule="evenodd" />
     </svg>
   ),
   File: () => (
@@ -70,8 +70,10 @@ interface Item {
   size?: number;
 }
 
-export default function FileManager() {
-  const [path, setPath] = useState<string>("");
+// === НОВОЕ: Принимаем basePath из пропсов ===
+export default function FileManager({ basePath = "" }: { basePath?: string }) {
+  // Начинаем путь с базовой папки пользователя
+  const [path, setPath] = useState<string>(basePath);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
@@ -84,6 +86,13 @@ export default function FileManager() {
   const [startNumber, setStartNumber] = useState<number>(1);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // === НОВОЕ: Синхронизируем базовый путь, если он загрузился с задержкой ===
+  useEffect(() => {
+    if (!path.startsWith(basePath)) {
+      setPath(basePath);
+    }
+  }, [basePath]);
 
   useEffect(() => {
     setSelectedPaths(new Set());
@@ -145,9 +154,8 @@ export default function FileManager() {
     alert(`Скопировано ссылок: ${links.split('\n').length}`);
   };
 
-  // === НОВОЕ: МАССОВОЕ СКАЧИВАНИЕ ===
+  // === МАССОВОЕ СКАЧИВАНИЕ ===
   const handleMassDownload = async () => {
-    // Отфильтровываем только файлы из выбранного
     const selectedFiles = items.filter(i => selectedPaths.has(i.path) && i.type === 'file');
     
     if (selectedFiles.length === 0) {
@@ -175,11 +183,9 @@ export default function FileManager() {
             console.error(`Ошибка при скачивании ${item.name}:`, error);
         }
         
-        // Добавляем задержку в 500мс, чтобы браузер не заблокировал массовое скачивание как спам
         await new Promise(resolve => setTimeout(resolve, 500));
     }
     
-    // Снимаем выделение после старта скачивания (по желанию)
     setSelectedPaths(new Set());
   };
 
@@ -300,11 +306,20 @@ export default function FileManager() {
     setUploadProgress("");
   };
 
+  // === НОВОЕ: Блокируем выход выше базовой папки ===
   const goUp = () => {
-    if (!path) return;
+    if (!path || path === basePath) return;
+    
     const parts = path.split('/').filter(Boolean);
     parts.pop();
-    setPath(parts.length ? parts.join('/') + '/' : "");
+    const newPath = parts.length ? parts.join('/') + '/' : "";
+    
+    // Проверка: если попытались обрезать больше, чем положено
+    if (newPath.length < basePath.length) {
+       setPath(basePath);
+    } else {
+       setPath(newPath);
+    }
   };
 
   const copyAllLinks = () => {
@@ -319,7 +334,8 @@ export default function FileManager() {
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
-            <button onClick={goUp} disabled={!path} className="p-2 rounded-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm disabled:opacity-30 hover:bg-slate-50 transition-all">
+            {/* Отключаем кнопку назад, если мы в корневой личной папке */}
+            <button onClick={goUp} disabled={path === basePath} className="p-2 rounded-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm disabled:opacity-30 hover:bg-slate-50 transition-all">
                 <Icons.Back />
             </button>
             
@@ -351,7 +367,6 @@ export default function FileManager() {
                 <Icons.Copy /> Ссылки
              </button>
              
-             {/* --- НОВАЯ КНОПКА МАССОВОГО СКАЧИВАНИЯ --- */}
              <button onClick={handleMassDownload} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
                 <Icons.Download /> Скачать
              </button>
