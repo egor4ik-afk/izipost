@@ -1,9 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-// Убрали uploadFile из импорта, он нам больше не нужен
-import { fetchFiles, deleteFile, createFolder, renameItem } from '@/app/actions';
+import { fetchFiles, deleteFile, createFolder, renameItem, getDownloadLink } from '@/app/actions';
 import Image from 'next/image';
+
+// --- УТИЛИТА ДЛЯ ФОРМАТИРОВАНИЯ РАЗМЕРА ФАЙЛА ---
+function formatBytes(bytes?: number, decimals = 1) {
+  if (bytes === undefined || bytes === null) return '';
+  if (!+bytes) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
 
 // --- ИКОНКИ ---
 const Icons = {
@@ -30,7 +40,7 @@ const Icons = {
     </svg>
   ),
   Copy: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5" />
     </svg>
   ),
@@ -40,6 +50,16 @@ const Icons = {
       <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
     </svg>
   ),
+  Link: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+    </svg>
+  ),
+  Download: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+    </svg>
+  )
 };
 
 interface Item {
@@ -47,6 +67,7 @@ interface Item {
   path: string;
   type: 'file' | 'folder';
   url?: string;
+  size?: number;
 }
 
 export default function FileManager() {
@@ -54,6 +75,8 @@ export default function FileManager() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
 
@@ -63,6 +86,7 @@ export default function FileManager() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setSelectedPaths(new Set());
     loadFiles();
   }, [path]);
 
@@ -72,6 +96,92 @@ export default function FileManager() {
     setItems(data as Item[]);
     setLoading(false);
   }
+
+  // === ЛОГИКА МАССОВОГО ВЫДЕЛЕНИЯ ===
+  const toggleSelection = (e: React.ChangeEvent<HTMLInputElement>, itemPath: string) => {
+    e.stopPropagation();
+    const newSet = new Set(selectedPaths);
+    if (newSet.has(itemPath)) {
+      newSet.delete(itemPath);
+    } else {
+      newSet.add(itemPath);
+    }
+    setSelectedPaths(newSet);
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedPaths(new Set(items.map(i => i.path)));
+    } else {
+      setSelectedPaths(new Set());
+    }
+  };
+
+  // === ЛОГИКА МАССОВЫХ ДЕЙСТВИЙ ===
+  const handleMassDelete = async () => {
+    if(!confirm(`Удалить выбранные элементы (${selectedPaths.size} шт.)?`)) return;
+    setLoading(true);
+    
+    for (const p of Array.from(selectedPaths)) {
+       await deleteFile(p); 
+    }
+    
+    setSelectedPaths(new Set());
+    await loadFiles();
+  };
+
+  const copySelectedLinks = () => {
+    const links = items
+      .filter(i => selectedPaths.has(i.path) && i.type === 'file' && i.url)
+      .map(i => i.url)
+      .join('\n');
+      
+    if (!links) {
+      alert('Нет ссылок для копирования (выбраны только папки)');
+      return;
+    }
+
+    navigator.clipboard.writeText(links);
+    alert(`Скопировано ссылок: ${links.split('\n').length}`);
+  };
+
+  // === НОВОЕ: МАССОВОЕ СКАЧИВАНИЕ ===
+  const handleMassDownload = async () => {
+    // Отфильтровываем только файлы из выбранного
+    const selectedFiles = items.filter(i => selectedPaths.has(i.path) && i.type === 'file');
+    
+    if (selectedFiles.length === 0) {
+        alert('Выберите файлы для скачивания (папки скачать нельзя)');
+        return;
+    }
+
+    if (!confirm(`Начать скачивание файлов (${selectedFiles.length} шт.)?\n(Браузер может запросить разрешение на скачивание нескольких файлов)`)) return;
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+        const item = selectedFiles[i];
+        try {
+            const response = await getDownloadLink(item.path, item.name);
+            
+            if (response?.success && response.url) {
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = response.url;
+                a.download = item.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        } catch (error) {
+            console.error(`Ошибка при скачивании ${item.name}:`, error);
+        }
+        
+        // Добавляем задержку в 500мс, чтобы браузер не заблокировал массовое скачивание как спам
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    // Снимаем выделение после старта скачивания (по желанию)
+    setSelectedPaths(new Set());
+  };
 
   const handleRename = async (e: React.MouseEvent, item: Item) => {
     e.stopPropagation(); 
@@ -104,7 +214,37 @@ export default function FileManager() {
       }
   }
 
-  // === ОБНОВЛЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ ===
+  const handleCopySingleLink = (e: React.MouseEvent, url?: string) => {
+      e.stopPropagation();
+      if (!url) return;
+      navigator.clipboard.writeText(url);
+      alert('Ссылка на файл скопирована!');
+  }
+
+  const handleDownload = async (e: React.MouseEvent, item: Item) => {
+    e.stopPropagation();
+    if (!item.path) return;
+    
+    try {
+        const response = await getDownloadLink(item.path, item.name);
+        
+        if (response?.success && response.url) {
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = response.url;
+            a.download = item.name; 
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else {
+            throw new Error("Не удалось получить ссылку");
+        }
+    } catch (error) {
+        console.error('Ошибка при генерации ссылки для скачивания:', error);
+        alert('Произошла ошибка при попытке скачать файл.');
+    }
+  }
+
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!fileInputRef.current?.files?.length) return;
@@ -117,7 +257,6 @@ export default function FileManager() {
         const file = files[i];
         setUploadProgress(`Загрузка ${i + 1} из ${files.length}`);
 
-        // Формируем нужное имя файла прямо здесь
         let finalFileName = file.name;
         if (renameMode === 'numbered') {
             const ext = file.name.split('.').pop();
@@ -126,26 +265,23 @@ export default function FileManager() {
         }
 
         try {
-            // ШАГ 1: Получаем Presigned URL у нашего API
-            // ВАЖНО: Убедись, что путь '/api/files' правильный для твоего проекта
             const response = await fetch('/api/files', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     fileName: finalFileName,
                     fileType: file.type,
-                    prefix: path // отправляем текущую папку как префикс
+                    prefix: path
                 }),
             });
 
             const data = await response.json();
             if (!data.success) throw new Error(data.error);
 
-            // ШАГ 2: Грузим файл напрямую в S3
             const uploadResponse = await fetch(data.url, {
                 method: 'PUT',
                 headers: { 'Content-Type': file.type },
-                body: file, // Сам файл идет напрямую!
+                body: file,
             });
 
             if (!uploadResponse.ok) {
@@ -174,7 +310,7 @@ export default function FileManager() {
   const copyAllLinks = () => {
     const links = items.filter(i => i.type === 'file' && i.url).map(i => i.url).join('\n');
     navigator.clipboard.writeText(links);
-    alert('Ссылки скопированы!');
+    alert('Все ссылки скопированы!');
   };
 
   return (
@@ -186,13 +322,52 @@ export default function FileManager() {
             <button onClick={goUp} disabled={!path} className="p-2 rounded-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm disabled:opacity-30 hover:bg-slate-50 transition-all">
                 <Icons.Back />
             </button>
-            <div className="bg-slate-100 dark:bg-zinc-800/50 px-4 py-2 rounded-lg font-mono text-sm border border-slate-200 dark:border-zinc-700/50 break-all">
-                root/{path}
+            
+            <div className="flex items-center gap-3 bg-slate-100 dark:bg-zinc-800/50 px-4 py-2 rounded-lg border border-slate-200 dark:border-zinc-700/50">
+                {items.length > 0 && (
+                   <div className="flex items-center gap-2 border-r border-slate-300 dark:border-zinc-600 pr-3 mr-1">
+                      <input 
+                         type="checkbox"
+                         checked={selectedPaths.size === items.length && items.length > 0}
+                         onChange={handleSelectAll}
+                         className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                         title="Выбрать все"
+                      />
+                   </div>
+                )}
+                <span className="font-mono text-sm break-all text-slate-600 dark:text-slate-300">
+                  root/{path}
+                </span>
             </div>
         </div>
-        <button onClick={copyAllLinks} className="flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
-            <Icons.Copy /> Копировать все ссылки
-        </button>
+
+        {/* --- ПАНЕЛЬ ДЕЙСТВИЙ ИЛИ КНОПКА КОПИРОВАНИЯ --- */}
+        {selectedPaths.size > 0 ? (
+          <div className="flex items-center flex-wrap gap-2 animate-in fade-in zoom-in-95 bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded-xl border border-indigo-100 dark:border-indigo-800 shadow-sm">
+             <span className="px-3 text-sm font-medium text-indigo-700 dark:text-indigo-300">
+               Выбрано: {selectedPaths.size}
+             </span>
+             <button onClick={copySelectedLinks} className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium shadow-sm transition-colors">
+                <Icons.Copy /> Ссылки
+             </button>
+             
+             {/* --- НОВАЯ КНОПКА МАССОВОГО СКАЧИВАНИЯ --- */}
+             <button onClick={handleMassDownload} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
+                <Icons.Download /> Скачать
+             </button>
+
+             <button onClick={handleMassDelete} className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
+                <Icons.Trash /> Удалить
+             </button>
+             <button onClick={() => setSelectedPaths(new Set())} className="px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+                Отмена
+             </button>
+          </div>
+        ) : (
+          <button onClick={copyAllLinks} className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
+              <Icons.Copy /> Копировать все ссылки
+          </button>
+        )}
       </header>
 
       {/* CONTROLS */}
@@ -236,27 +411,36 @@ export default function FileManager() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
           {items.map((item) => (
-            <div key={item.path} className="group relative bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200 overflow-hidden flex flex-col">
+            <div 
+               key={item.path} 
+               className={`group relative bg-white dark:bg-zinc-900 border rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200 overflow-hidden flex flex-col cursor-default
+                  ${selectedPaths.has(item.path) ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-100 dark:border-zinc-800'}`
+               }
+            >
               
-              <div className="absolute top-2 right-2 z-10 flex gap-1">
-                 <button 
-                    onClick={(e) => handleRename(e, item)}
-                    className="p-1.5 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 rounded-full shadow-sm border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-slate-300"
-                    title="Переименовать"
-                 >
-                    <Icons.Edit />
-                 </button>
-                 <button 
-                    onClick={(e) => handleDelete(e, item.path)}
-                    className="p-1.5 bg-red-50/90 hover:bg-red-100 dark:bg-red-900/50 dark:hover:bg-red-900/80 rounded-full shadow-sm border border-red-200 dark:border-red-800 text-red-500"
-                    title="Удалить"
-                 >
-                    <Icons.Trash />
-                 </button>
+              <div className="absolute top-3 left-3 z-20">
+                 <input 
+                    type="checkbox"
+                    checked={selectedPaths.has(item.path)}
+                    onChange={(e) => toggleSelection(e, item.path)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-5 h-5 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500 cursor-pointer shadow-sm transition-all"
+                 />
+              </div>
+
+              <div className="absolute top-2 right-2 z-10 flex flex-wrap justify-end gap-1 max-w-[70%]">
+                 {item.type === 'file' && (
+                   <>
+                     <button onClick={(e) => handleCopySingleLink(e, item.url)} className="p-1.5 bg-white/90 dark:bg-zinc-800/90 hover:bg-indigo-50 dark:hover:bg-zinc-700 rounded-full shadow-sm border border-slate-200 dark:border-zinc-700 text-indigo-500" title="Скопировать ссылку"><Icons.Link /></button>
+                     <button onClick={(e) => handleDownload(e, item)} className="p-1.5 bg-white/90 dark:bg-zinc-800/90 hover:bg-emerald-50 dark:hover:bg-zinc-700 rounded-full shadow-sm border border-slate-200 dark:border-zinc-700 text-emerald-500" title="Скачать файл"><Icons.Download /></button>
+                   </>
+                 )}
+                 <button onClick={(e) => handleRename(e, item)} className="p-1.5 bg-white/90 dark:bg-zinc-800/90 hover:bg-slate-50 dark:hover:bg-zinc-700 rounded-full shadow-sm border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-slate-300" title="Переименовать"><Icons.Edit /></button>
+                 <button onClick={(e) => handleDelete(e, item.path)} className="p-1.5 bg-red-50/90 hover:bg-red-100 dark:bg-red-900/50 dark:hover:bg-red-900/80 rounded-full shadow-sm border border-red-200 dark:border-red-800 text-red-500" title="Удалить"><Icons.Trash /></button>
               </div>
 
               {item.type === 'folder' ? (
-                <div onClick={() => setPath(item.path)} className="cursor-pointer p-6 flex-1 flex flex-col items-center justify-center bg-indigo-50/30 dark:bg-zinc-800/30 hover:bg-indigo-50 dark:hover:bg-zinc-800 transition-colors">
+                <div onClick={(e) => { e.stopPropagation(); setPath(item.path); }} className="cursor-pointer p-6 flex-1 flex flex-col items-center justify-center bg-indigo-50/30 dark:bg-zinc-800/30 hover:bg-indigo-50 dark:hover:bg-zinc-800 transition-colors pt-12">
                   <Icons.Folder />
                   <div className="mt-3 font-medium text-slate-700 dark:text-slate-200 text-sm truncate w-full text-center">{item.name}</div>
                 </div>
@@ -270,9 +454,16 @@ export default function FileManager() {
                     )}
                   </div>
                   
-                  <div className="p-3 bg-white dark:bg-zinc-900 flex flex-col gap-2">
+                  <div className="p-3 bg-white dark:bg-zinc-900 flex flex-col gap-1">
                     <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate select-all" title={item.name}>{item.name}</p>
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline border border-indigo-100 dark:border-indigo-900/30 rounded py-1 bg-indigo-50 dark:bg-indigo-900/10">
+                    
+                    {item.size !== undefined && (
+                        <p className="text-[10px] text-slate-400 font-mono">
+                           {formatBytes(item.size)}
+                        </p>
+                    )}
+                    
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 text-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline border border-indigo-100 dark:border-indigo-900/30 rounded py-1 bg-indigo-50 dark:bg-indigo-900/10">
                         Открыть
                     </a>
                   </div>

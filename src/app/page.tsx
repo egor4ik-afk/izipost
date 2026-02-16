@@ -48,7 +48,7 @@ export default function Home() {
       <div className="max-w-6xl mx-auto px-4 mb-8">
         <div className="bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
           <h2 className="text-xl font-bold mb-4 text-slate-800 dark:text-white flex items-center gap-2">
-            📸 Создать превью сайта
+            📸 Создать скриншот по ссылке
           </h2>
           
           <form onSubmit={handleScreenshot} className="flex flex-col sm:flex-row gap-3">

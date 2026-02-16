@@ -5,8 +5,10 @@ import {
   PutObjectCommand, 
   DeleteObjectCommand, 
   CopyObjectCommand,
+  GetObjectCommand, // <--- Добавили этот импорт
   ListObjectsV2CommandOutput // <--- Добавили импорт типа ответа
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"; // <--- И этот тоже
 
 const s3Client = new S3Client({
   region: process.env.YANDEX_REGION as string,
@@ -41,13 +43,14 @@ export async function getFilesByFolder(prefix = "") {
         type: "folder" as const
       }));
 
-    const files = (data.Contents || [])
+      const files = (data.Contents || [])
       .filter((f) => f.Key && f.Key !== prefix)
       .map((f) => ({
         name: f.Key!.replace(prefix, ""),
         path: f.Key!,
         type: "file" as const,
         url: `https://storage.yandexcloud.net/${BUCKET}/${f.Key!}`,
+        size: f.Size, // <--- ВОТ ЭТА СТРОЧКА! Передаем размер в байтах
         lastModified: f.LastModified,
       }));
 
@@ -57,7 +60,17 @@ export async function getFilesByFolder(prefix = "") {
     return [];
   }
 }
+export async function getDownloadUrlFromS3(key: string, fileName: string) {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    // Этот магический параметр заставит браузер СКАЧАТЬ файл с правильным именем
+    ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+  });
 
+  // Ссылка будет жить 1 час (3600 секунд), этого хватит чтобы начать скачивание
+  return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+}
 export async function uploadFileToS3(buffer: Buffer, key: string, contentType: string) {
   const command = new PutObjectCommand({
     Bucket: BUCKET,

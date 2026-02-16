@@ -1,13 +1,21 @@
 // src/app/actions.ts
 'use server'
 
-import { getFilesByFolder, uploadFileToS3, deleteFileFromS3, renameFileInS3, renameFolderInS3 } from '@/lib/s3';
+import { getFilesByFolder, getDownloadUrlFromS3, uploadFileToS3, deleteFileFromS3, renameFileInS3, renameFolderInS3 } from '@/lib/s3';
 import { revalidatePath } from 'next/cache';
 
-// ... (fetchFiles, uploadFile, createFolder, deleteFile оставляем без изменений) ...
 
 export async function fetchFiles(currentPath: string) {
   return await getFilesByFolder(currentPath);
+}
+export async function getDownloadLink(key: string, fileName: string) {
+  try {
+    const url = await getDownloadUrlFromS3(key, fileName);
+    return { success: true, url };
+  } catch (error) {
+    console.error("Ошибка генерации ссылки на скачивание:", error);
+    return { success: false, error: "Не удалось создать ссылку" };
+  }
 }
 
 export async function uploadFile(formData: FormData) {
@@ -50,24 +58,24 @@ export async function deleteFile(key: string) {
 
 export async function renameItem(oldKey: string, newName: string) {
   const isFolder = oldKey.endsWith('/');
-  
+
   // Вычисляем родительскую директорию
   const pathParts = oldKey.split('/');
   pathParts.pop(); // удаляем имя файла (или пустую строку, если папка)
   if (isFolder) pathParts.pop(); // если папка, удаляем еще один уровень вложенности
-  
+
   const parentPath = pathParts.join('/') + (pathParts.length > 0 ? '/' : '');
-  
+
   // Формируем новый путь
   let newKey = parentPath + newName;
   if (isFolder && !newKey.endsWith('/')) {
-      newKey += '/'; // Возвращаем слеш для папки
+    newKey += '/'; // Возвращаем слеш для папки
   }
-  
+
   if (isFolder) {
-      await renameFolderInS3(oldKey, newKey);
+    await renameFolderInS3(oldKey, newKey);
   } else {
-      await renameFileInS3(oldKey, newKey);
+    await renameFileInS3(oldKey, newKey);
   }
 
   revalidatePath('/');
