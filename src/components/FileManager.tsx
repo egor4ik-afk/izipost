@@ -15,13 +15,23 @@ function formatBytes(bytes?: number, decimals = 1) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+// --- НОВАЯ УТИЛИТА ДЛЯ CDN ---
+function getCdnUrl(originalUrl?: string) {
+  if (!originalUrl) return '';
+  // Умная замена: находит стандартный домен Яндекса + бакет и меняет на твой CDN
+  // Поддерживает как URL вида storage.yandexcloud.net/relax/, так и relax.storage.yandexcloud.net/
+  return originalUrl
+    .replace(/https:\/\/storage\.yandexcloud\.net\/[^\/]+\//, 'https://cdn.relaxdev.ru/')
+    .replace(/https:\/\/[^\.]+\.storage\.yandexcloud\.net\//, 'https://cdn.relaxdev.ru/');
+}
+
 // --- ИКОНКИ ---
 const Icons = {
   Folder: () => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 text-indigo-400 dark:text-indigo-500 mx-auto">
       <path d="M19.5 21a1.5 1.5 0 0 0 1.5-1.5v-3a1.5 1.5 0 0 0-1.5-1.5h-10.5a1.5 1.5 0 0 0-1.5 1.5v3a1.5 1.5 0 0 0 1.5 1.5h10.5Z" opacity="0.4" />
       <path d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75Z" />
-      <path fillRule="evenodd" d="M3.56 9.682A3 3 0 0 1 6.38 7.5h11.24a3 3 0 0 1 2.82 2.182l1.626 6.503A3 3 0 0 1 19.153 20H4.847a3 3 0 0 1-2.913-3.815l1.626-6.503ZM6.236 9.77a1.5 1.5 0 0 1 1.41-.77h8.708a1.5 1.5 0 0 1 1.41.77l1.24-4.962a.75.75 0 0 1-.728.932H5.724a.75.75 0 0 1-.728-.932l1.24-4.962Z" clipRule="evenodd" />
+      <path fillRule="evenodd" d="M3.56 9.682A3 3 0 0 1 6.38 7.5h11.24a3 3 0 0 1 2.82 2.182l1.626 6.503A3 3 0 0 1 19.153 20H4.847a3 3 0 0 1-2.913-3.815l1.626-6.503ZM6.236 9.77a1.5 1.5 0 0 1 1.41-.77h8.708a1.5 1.5 0 0 1 1.41.77l1.24 4.962a.75.75 0 0 1-.728.932H5.724a.75.75 0 0 1-.728-.932l1.24-4.962Z" clipRule="evenodd" />
     </svg>
   ),
   File: () => (
@@ -70,9 +80,7 @@ interface Item {
   size?: number;
 }
 
-// === НОВОЕ: Принимаем basePath из пропсов ===
 export default function FileManager({ basePath = "" }: { basePath?: string }) {
-  // Начинаем путь с базовой папки пользователя
   const [path, setPath] = useState<string>(basePath);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -87,7 +95,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // === НОВОЕ: Синхронизируем базовый путь, если он загрузился с задержкой ===
   useEffect(() => {
     if (!path.startsWith(basePath)) {
       setPath(basePath);
@@ -106,7 +113,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
     setLoading(false);
   }
 
-  // === ЛОГИКА МАССОВОГО ВЫДЕЛЕНИЯ ===
   const toggleSelection = (e: React.ChangeEvent<HTMLInputElement>, itemPath: string) => {
     e.stopPropagation();
     const newSet = new Set(selectedPaths);
@@ -126,7 +132,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
     }
   };
 
-  // === ЛОГИКА МАССОВЫХ ДЕЙСТВИЙ ===
   const handleMassDelete = async () => {
     if(!confirm(`Удалить выбранные элементы (${selectedPaths.size} шт.)?`)) return;
     setLoading(true);
@@ -142,7 +147,8 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   const copySelectedLinks = () => {
     const links = items
       .filter(i => selectedPaths.has(i.path) && i.type === 'file' && i.url)
-      .map(i => i.url)
+      // 🔥 ОБЕРНУЛИ В getCdnUrl
+      .map(i => getCdnUrl(i.url)) 
       .join('\n');
       
     if (!links) {
@@ -154,7 +160,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
     alert(`Скопировано ссылок: ${links.split('\n').length}`);
   };
 
-  // === МАССОВОЕ СКАЧИВАНИЕ ===
   const handleMassDownload = async () => {
     const selectedFiles = items.filter(i => selectedPaths.has(i.path) && i.type === 'file');
     
@@ -223,7 +228,8 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   const handleCopySingleLink = (e: React.MouseEvent, url?: string) => {
       e.stopPropagation();
       if (!url) return;
-      navigator.clipboard.writeText(url);
+      // 🔥 ОБЕРНУЛИ В getCdnUrl
+      navigator.clipboard.writeText(getCdnUrl(url));
       alert('Ссылка на файл скопирована!');
   }
 
@@ -306,7 +312,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
     setUploadProgress("");
   };
 
-  // === НОВОЕ: Блокируем выход выше базовой папки ===
   const goUp = () => {
     if (!path || path === basePath) return;
     
@@ -314,7 +319,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
     parts.pop();
     const newPath = parts.length ? parts.join('/') + '/' : "";
     
-    // Проверка: если попытались обрезать больше, чем положено
     if (newPath.length < basePath.length) {
        setPath(basePath);
     } else {
@@ -323,7 +327,8 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   };
 
   const copyAllLinks = () => {
-    const links = items.filter(i => i.type === 'file' && i.url).map(i => i.url).join('\n');
+    // 🔥 ОБЕРНУЛИ В getCdnUrl
+    const links = items.filter(i => i.type === 'file' && i.url).map(i => getCdnUrl(i.url)).join('\n');
     navigator.clipboard.writeText(links);
     alert('Все ссылки скопированы!');
   };
@@ -334,7 +339,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
-            {/* Отключаем кнопку назад, если мы в корневой личной папке */}
             <button onClick={goUp} disabled={path === basePath} className="p-2 rounded-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm disabled:opacity-30 hover:bg-slate-50 transition-all">
                 <Icons.Back />
             </button>
@@ -478,7 +482,8 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
                         </p>
                     )}
                     
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 text-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline border border-indigo-100 dark:border-indigo-900/30 rounded py-1 bg-indigo-50 dark:bg-indigo-900/10">
+                    {/* 🔥 ОБЕРНУЛИ href В getCdnUrl */}
+                    <a href={getCdnUrl(item.url)} target="_blank" rel="noopener noreferrer" className="mt-1 text-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline border border-indigo-100 dark:border-indigo-900/30 rounded py-1 bg-indigo-50 dark:bg-indigo-900/10">
                         Открыть
                     </a>
                   </div>
