@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { fetchFiles, uploadFile, deleteFile, createFolder, renameItem } from '@/app/actions';
+// Убрали uploadFile из импорта, он нам больше не нужен
+import { fetchFiles, deleteFile, createFolder, renameItem } from '@/app/actions';
 import Image from 'next/image';
-
-// --- КОНСТАНТЫ ---
-// const MAX_FILE_SIZE = 4.4 * 1024 * 1024; // Лимит Vercel на ОДИН файл
 
 // --- ИКОНКИ ---
 const Icons = {
@@ -56,7 +54,6 @@ export default function FileManager() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
-  // Состояния загрузки
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<string>("");
 
@@ -76,28 +73,21 @@ export default function FileManager() {
     setLoading(false);
   }
 
-  // === ЛОГИКА ПЕРЕИМЕНОВАНИЯ (С СОХРАНЕНИЕМ РАСШИРЕНИЯ) ===
   const handleRename = async (e: React.MouseEvent, item: Item) => {
     e.stopPropagation(); 
-    
-    // Отделяем имя от расширения
     const lastDotIndex = item.name.lastIndexOf('.');
     let nameWithoutExt = item.name;
     let extension = "";
 
-    // Если это файл и у него есть расширение
     if (item.type === 'file' && lastDotIndex !== -1) {
         nameWithoutExt = item.name.substring(0, lastDotIndex);
-        extension = item.name.substring(lastDotIndex); // например ".jpg"
+        extension = item.name.substring(lastDotIndex); 
     }
 
-    // Показываем в prompt только имя (без .jpg)
     const newNameInput = prompt(`Переименовать "${item.name}" в:`, nameWithoutExt);
     
     if (newNameInput && newNameInput !== nameWithoutExt) {
-      // Собираем обратно
       const finalName = newNameInput + extension;
-      
       setLoading(true);
       await renameItem(item.path, finalName);
       await loadFiles();
@@ -105,7 +95,6 @@ export default function FileManager() {
     }
   };
   
-  // === ЛОГИКА УДАЛЕНИЯ ===
   const handleDelete = async (e: React.MouseEvent, itemPath: string) => {
       e.stopPropagation();
       if(confirm('Удалить безвозвратно?')) { 
@@ -115,6 +104,7 @@ export default function FileManager() {
       }
   }
 
+  // === ОБНОВЛЕННАЯ ФУНКЦИЯ ЗАГРУЗКИ ===
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!fileInputRef.current?.files?.length) return;
@@ -127,22 +117,44 @@ export default function FileManager() {
         const file = files[i];
         setUploadProgress(`Загрузка ${i + 1} из ${files.length}`);
 
-        /* if (file.size > MAX_FILE_SIZE) {
-            alert(`⚠️ Файл "${file.name}" пропущен: слишком большой (>4.4MB)`);
-            continue;
-        } */
-
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('folder', path);
-        formData.append('mode', renameMode);
-        
+        // Формируем нужное имя файла прямо здесь
+        let finalFileName = file.name;
         if (renameMode === 'numbered') {
-            formData.append('number', currentNumber.toString());
+            const ext = file.name.split('.').pop();
+            finalFileName = `${currentNumber}.${ext}`;
             currentNumber++; 
         }
 
-        try { await uploadFile(formData); } catch (e) { console.error(e); }
+        try {
+            // ШАГ 1: Получаем Presigned URL у нашего API
+            // ВАЖНО: Убедись, что путь '/api/files' правильный для твоего проекта
+            const response = await fetch('/api/files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: finalFileName,
+                    fileType: file.type,
+                    prefix: path // отправляем текущую папку как префикс
+                }),
+            });
+
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error);
+
+            // ШАГ 2: Грузим файл напрямую в S3
+            const uploadResponse = await fetch(data.url, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: file, // Сам файл идет напрямую!
+            });
+
+            if (!uploadResponse.ok) {
+                 throw new Error(`Ошибка загрузки ${file.name} в S3`);
+            }
+        } catch (error) { 
+            console.error(error); 
+            alert(`Ошибка при загрузке файла: ${file.name}`);
+        }
     }
     
     await loadFiles();
@@ -226,7 +238,6 @@ export default function FileManager() {
           {items.map((item) => (
             <div key={item.path} className="group relative bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200 overflow-hidden flex flex-col">
               
-              {/* --- ДЕЙСТВИЯ (ТЕПЕРЬ ВСЕГДА ВИДНЫ) --- */}
               <div className="absolute top-2 right-2 z-10 flex gap-1">
                  <button 
                     onClick={(e) => handleRename(e, item)}
@@ -259,7 +270,6 @@ export default function FileManager() {
                     )}
                   </div>
                   
-                  {/* ИНФО + КНОПКА ОТКРЫТЬ (ВСЕГДА ВИДНА) */}
                   <div className="p-3 bg-white dark:bg-zinc-900 flex flex-col gap-2">
                     <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate select-all" title={item.name}>{item.name}</p>
                     <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline border border-indigo-100 dark:border-indigo-900/30 rounded py-1 bg-indigo-50 dark:bg-indigo-900/10">

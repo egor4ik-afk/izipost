@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST-метод для создания presigned URL для загрузки
+// POST-метод для создания presigned URL для загрузки
 export async function POST(request: NextRequest) {
   try {
     const { fileName, fileType, prefix } = await request.json();
@@ -45,7 +46,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'fileName and fileType are required' }, { status: 400, headers });
     }
     
-    const key = `${prefix || ''}${Date.now()}_${fileName}`;
+    // Убрали ${Date.now()}_, теперь имя сохраняется точь-в-точь как мы передали с клиента
+    const key = `${prefix || ''}${fileName}`;
 
     const command = new PutObjectCommand({
         Bucket: bucketName,
