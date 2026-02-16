@@ -17,6 +17,13 @@ declare module "next-auth" {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  
+  // 🔥 НОВОЕ: Указываем пути к нашим кастомным красивым страницам
+  pages: {
+    signIn: '/auth/signin',
+    verifyRequest: '/auth/verify-request',
+  },
+  
   providers: [
     Nodemailer({
       server: {

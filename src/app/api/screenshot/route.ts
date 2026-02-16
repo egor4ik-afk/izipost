@@ -1,123 +1,78 @@
 import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium-min';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { uploadFileToS3 } from '@/lib/s3';
+import { auth } from '@/auth';
 
-const s3 = new S3Client({
-  region: process.env.YANDEX_REGION,
-  endpoint: "https://storage.yandexcloud.net",
-  credentials: {
-    accessKeyId: process.env.YANDEX_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.YANDEX_SECRET_ACCESS_KEY!,
-  },
-});
-
-const BUCKET = process.env.YANDEX_BUCKET_NAME;
-
+// Увеличиваем лимит времени выполнения для этого роута (скриншоты делаются не моментально)
 export const maxDuration = 60; 
-export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  let browser = null;
-  
   try {
-    const { url, containerId } = await req.json(); // 👈 Получаем containerId
+    // 1. Проверяем авторизацию
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
+    const { url } = await req.json();
     if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'URL is required' }, { status: 400 });
     }
 
+    // 2. Настраиваем запуск браузера (Локально vs Продакшен)
     const isLocal = process.env.NODE_ENV === 'development';
-    const localExecutablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-
-    browser = await puppeteer.launch({
-      args: isLocal ? [] : [
-          ...chromium.args, 
-          '--hide-scrollbars', 
-          '--disable-web-security',
-          '--disable-gpu',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--font-render-hinting=none',
-      ],
-      defaultViewport: { width: 1920, height: 1080 },
-      executablePath: isLocal 
-        ? localExecutablePath 
-        : await chromium.executablePath(
-            'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar'
-          ),
-      headless: true,
-    });
-
-    const page = await browser.newPage();
     
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-        const resourceType = req.resourceType();
-        if (['media', 'font'].includes(resourceType)) { 
-            req.continue(); 
-        } else if (resourceType === 'image') {
-             req.continue();
-        } else {
-             req.continue();
-        }
-    });
-
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
-
-    try {
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
-    } catch (e) {
-        console.log('Timeout waiting for networkidle, taking screenshot anyway...');
-    }
-
-    await new Promise(r => setTimeout(r, 1000));
-
-    await page.evaluate(async () => {
-        window.scrollBy(0, window.innerHeight);
-        await new Promise(resolve => setTimeout(resolve, 200));
-        window.scrollTo(0, 0);
-    });
-
-    const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 85 });
-
-    // 👇 Формируем путь используя containerId
-    let fileName: string;
-    if (containerId) {
-      // Используем containerId для структуры preview/{containerId}/preview.jpg
-      fileName = `preview/${containerId}/preview.jpg`;
+    let executablePath: string;
+    if (isLocal) {
+      // ПУТЬ ДЛЯ ЛОКАЛЬНОГО ТЕСТА (Выбирает в зависимости от твоей ОС)
+      executablePath = process.platform === 'win32'
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        : process.platform === 'linux'
+        ? '/usr/bin/google-chrome'
+        : '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
     } else {
-      // Fallback на старую логику (если containerId нет)
-      let cleanName = '';
-      try {
-          const urlObj = new URL(url);
-          cleanName = urlObj.hostname.replace('www.', '');
-      } catch (e) {
-          cleanName = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '');
-      }
-      fileName = `preview/${cleanName}.jpg`;
+      // НА ПРОДАКШЕНЕ (Vercel/Yandex) используем sparticuz
+      executablePath = await chromium.executablePath();
     }
 
-    // 👇 ВАЖНО: убираем no-cache из заголовков S3
-    await s3.send(new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: fileName,
-      Body: screenshotBuffer,
-      ContentType: 'image/jpeg',
-      CacheControl: 'public, max-age=31536000', // 👈 Разрешаем кэширование на 1 год
-    }));
+    // 3. Запускаем браузер
+    const browser = await puppeteer.launch({
+      args: isLocal ? [] : chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: executablePath,
+      headless: chromium.headless,
+    });
 
-    const fileUrl = `https://storage.yandexcloud.net/${BUCKET}/${fileName}`;
+    // 4. Делаем скриншот
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    
+    // Переходим по ссылке и ждем, пока прогрузятся картинки и стили (networkidle2)
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    
+    const screenshotBuffer = await page.screenshot({ type: 'png' });
+    await browser.close();
 
-    return NextResponse.json({ success: true, url: fileUrl });
+    // 5. Формируем правильный путь для сохранения (в личную папку пользователя)
+    const basePath = session.user.isSuperAdmin ? "" : `users/${session.user.email}/`;
+    const fileName = `screenshot-${Date.now()}.png`;
+    const s3Key = `${basePath}${fileName}`; // Сохраняем прямо в корень папки юзера
+
+    // 6. Загружаем в Yandex/AWS S3
+    await uploadFileToS3(Buffer.from(screenshotBuffer), s3Key, 'image/png');
+
+    // 7. Возвращаем готовую ссылку
+    const bucketName = process.env.YANDEX_BUCKET_NAME;
+    const publicUrl = `https://${bucketName}.storage.yandexcloud.net/${s3Key}`;
+
+    return NextResponse.json({ success: true, url: publicUrl });
 
   } catch (error: any) {
-    console.error('Screenshot error:', error);
-    return NextResponse.json({ error: error.message || 'Failed' }, { status: 500 });
-  } finally {
-      if (browser) {
-          await browser.close();
-      }
+    console.error('Ошибка скриншотера:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: error?.message || 'Failed to create screenshot' 
+    }, { status: 500 });
   }
 }
