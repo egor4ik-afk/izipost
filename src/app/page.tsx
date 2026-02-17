@@ -19,7 +19,7 @@ export default async function Home() {
                 <path fillRule="evenodd" d="M10.5 3.75a6 6 0 0 0-5.98 6.496A5.25 5.25 0 0 0 5.25 20.25H16.5a5.25 5.25 0 0 0 2.516-10.025 7.5 7.5 0 0 0-8.516-6.475ZM9 11.25a.75.75 0 0 0-1.5 0v2.69l-.72-.72a.75.75 0 1 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l2-2a.75.75 0 1 0-1.06-1.06l-.72.72V11.25Z" clipRule="evenodd" />
               </svg>
             </span>
-            IziPost CMS
+            IziPost Storage
           </div>
           <Link href="/api/auth/signin" className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
             Войти
@@ -27,7 +27,7 @@ export default async function Home() {
         </nav>
 
         {/* Главный блок (Hero) */}
-        <section className="max-w-6xl mx-auto px-6 py-20 md:py-32 flex flex-col items-center text-center">
+        <section className="max-w-6xl mx-auto px-6 py-10 md:py-10 flex flex-col items-center text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-semibold mb-6 border border-indigo-100 dark:border-indigo-800/50">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
