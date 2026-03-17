@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-  ],
+, "scripts/migrate-cross-account.js"  ],
   "exclude": ["node_modules"]
 }

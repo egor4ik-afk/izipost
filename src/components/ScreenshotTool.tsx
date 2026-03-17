@@ -64,7 +64,7 @@ export default function ScreenshotTool() {
 
         {result && (
           <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-            <span className="text-green-800 dark:text-green-300 font-medium">✅ Скриншот успешно сохранен в папку preview!</span>
+            <span className="text-green-800 dark:text-green-300 font-medium">✅ Скриншот успешно сохранен в корневую папку!</span>
             <a href={result} target="_blank" className="text-sm underline text-green-700 dark:text-green-400 font-bold">Посмотреть</a>
           </div>
         )}

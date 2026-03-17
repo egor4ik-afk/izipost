@@ -19,7 +19,7 @@ function formatBytes(bytes?: number, decimals = 1) {
 function getCdnUrl(originalUrl?: string) {
   if (!originalUrl) return '';
   // Умная замена: находит стандартный домен Яндекса + бакет и меняет на твой CDN
-  // Поддерживает как URL вида storage.yandexcloud.net/relax/, так и relax.storage.yandexcloud.net/
+  // Поддерживает как URL вида storage.yandexcloud.net/izipost/, так и relax.storage.yandexcloud.net/
   return originalUrl
     .replace(/https:\/\/storage\.yandexcloud\.net\/[^\/]+\//, 'https://cdn.relaxdev.ru/')
     .replace(/https:\/\/[^\.]+\.storage\.yandexcloud\.net\//, 'https://cdn.relaxdev.ru/');
