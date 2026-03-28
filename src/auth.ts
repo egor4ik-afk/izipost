@@ -87,7 +87,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.sub;
         session.user.email = token.email as string;
         
-        session.user.isSuperAdmin = token.email === "kamrikalive@gmail.com" || token.email === "webbuildge@gmail.com";
+        session.user.isSuperAdmin = token.email === "kamrikalive@gmail.com" || token.email === "webbuildge@gmail.com" ||  token.email === "alexei.revenck@yandex.ru";
       }
       return session;
     }
