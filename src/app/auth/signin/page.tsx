@@ -2,9 +2,14 @@
 
 import { signIn } from 'next-auth/react';
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function SignInPage() {
+  const searchParams = useSearchParams();
+  // 🔥 Берём callbackUrl из строки запроса, дефолт — главная
+  const callbackUrl = searchParams.get('callbackUrl') || '/';
+
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -39,25 +44,19 @@ export default function SignInPage() {
       email,
       otp: code,
       redirect: false,
-      callbackUrl: '/',
+      callbackUrl, // 🔥 передаём куда вернуться
     });
 
     setLoading(false);
     if (res?.error) {
       setError('Неверный или просроченный код. Попробуйте ещё раз.');
     } else if (res?.url) {
-      window.location.href = res.url;
+      window.location.href = res.url; // 🔥 редирект на callbackUrl
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 p-4 font-sans text-slate-900 dark:text-slate-100">
-      <Link href="/" className="absolute top-6 left-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 transition-colors">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-        </svg>
-        На главную
-      </Link>
 
       <div className="max-w-md w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 shadow-xl">
 
@@ -103,7 +102,8 @@ export default function SignInPage() {
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold mb-2">Введите код</h1>
               <p className="text-slate-500 dark:text-slate-400 text-sm">
-                Мы отправили 6-значный код на <span className="font-semibold text-slate-700 dark:text-slate-200">{email}</span>
+                Мы отправили 6-значный код на{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{email}</span>
               </p>
             </div>
 
