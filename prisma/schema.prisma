@@ -6,13 +6,18 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("POSTGRES_PRISMA_URL")
-  directUrl = env("POSTGRES_URL_NON_POOLING")
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // =======================
 // ENUMS
 // =======================
+
+enum DeploymentType {
+  SERVERLESS
+  VM
+}
 
 enum GlobalRole {
   USER
@@ -25,10 +30,12 @@ enum TeamRole {
   VIEWER
 }
 
-// 🔥 НОВОЕ: Планы подписки для команд
 enum Plan {
   FREE
   PRO
+  ADMIN    // Тариф "Админка" 2000₽
+  BUSINESS // Тариф "Business" от 2990₽
+  DONATE
 }
 
 // =======================
@@ -42,10 +49,10 @@ model User {
   emailVerified DateTime?
   image         String?
   password      String?
-  username      String?   @unique  // Для ссылок вида @alex
-  phone         String?            // На будущее
-  firstName     String?            // На будущее
-  lastName      String?            // На будущее
+  username      String?   @unique  
+  phone         String?            
+  firstName     String?            
+  lastName      String?            
   
   globalRole    GlobalRole @default(USER)
 
@@ -100,12 +107,17 @@ model Team {
   slug        String   @unique
   avatarUrl   String?
   
-  // 🔥 НОВОЕ: Поле подписки
-  plan        Plan     @default(FREE)
+  plan        Plan     @default(FREE) // 🔥 ИСПРАВЛЕНО ТУТ
+
+  dbHost        String?   
+  dbRootPassEnc    String?   
+  planExpiresAt  DateTime?          
+  planOrderId    String?            
+  payments       Payment[]
   
   members     TeamMember[]
   projects    Project[]
-  invitations TeamInvitation[]  // 🔥 ДОБАВЛЕНО: обратная связь
+  invitations TeamInvitation[]  
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -134,6 +146,13 @@ model Project {
   branch             String    @default("main")
   repoOwner          String?
   gitToken           String?   @db.Text 
+
+  // 🔥 НОВЫЕ ПОЛЯ ДЛЯ БД
+  hasDatabase        Boolean   @default(false)
+  dbName             String?   // имя БД внутри кластера команды
+  dbUser             String?   // имя Postgres-пользователя
+  dbHost             String?   // дублируем team.dbHost сюда для удобства чтения
+  dbPasswordEnc      String?   // зашифрованный пароль юзера БД (AES-256-GCM)
   yandexContainerId  String?
 
   domain             String?   @unique
@@ -143,16 +162,16 @@ model Project {
   status             String    @default("created")
   lastDeployed       DateTime?
 
-  // 🔥 Ресурсы для Yandex Serverless Containers
-  cpu                Float     @default(1)        // vCPU: 0.5, 1, 2, 4
-  memory             Int       @default(512)      // RAM в MB: 128-8192
-  minInstances       Int       @default(0)        // Подготовленные инстансы (0 = cold start)
-  concurrency        Int       @default(1)        // Одновременных запросов на инстанс (1-16)
+  cpu                Float     @default(1)        
+  memory             Int       @default(512)      
+  minInstances       Int       @default(0)        
+  concurrency        Int       @default(1)        
 
-  // 🔥 НОВОЕ: Стек технологий
   framework          String?
   builder            String?
   language           String?
+  
+  sourceType         String?   
 
   envVars            Json?
   teamId             String
@@ -162,6 +181,13 @@ model Project {
   deployments        Deployment[] 
   domains            Domain[]
   
+  deploymentType     DeploymentType @default(SERVERLESS)
+  
+  vmContainerName    String?   
+  vmHost             String?   
+  vmStatus           String?   
+  vmLastSeen         DateTime? 
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -185,6 +211,8 @@ model Deployment {
   projectId     String
   project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
+  deploymentType     DeploymentType @default(SERVERLESS)
+
   createdAt     DateTime @default(now())
 }
 
@@ -225,7 +253,7 @@ model Feedback {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  comments  Comment[] // Связь с комментариями
+  comments  Comment[] 
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -244,7 +272,6 @@ model Comment {
   userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // 🔥 ПОЛЯ ДЛЯ ГОСТЯ
   name       String? 
   email      String?
 
@@ -264,11 +291,44 @@ model TeamInvitation {
   teamId     String
   team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   role       TeamRole @default(VIEWER)
-  invitedBy  String   // email того, кто пригласил
+  invitedBy  String   
   createdAt  DateTime @default(now())
   expiresAt  DateTime @default(dbgenerated("(NOW() + INTERVAL '7 DAY')"))
 
   @@unique([email, teamId])
   @@index([email])
   @@index([teamId])
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+
+  teamId          String
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  alfaOrderId     String?  @unique  
+  alfaFormUrl     String?           
+
+  plan            Plan              
+  amount          Int               
+  currency        String   @default("RUB")
+
+  status          String   @default("pending")
+  // pending   - создан, ждём оплаты
+  // paid      - оплачен (callback от банка)
+  // failed    - не оплачен
+  // cancelled - отменён
+
+  bankOrderStatus Int?              
+  bankMessage     String?
+
+  periodStart     DateTime?
+  periodEnd       DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([alfaOrderId])
+  @@index([status])
 }
