@@ -16,9 +16,41 @@ declare module "next-auth" {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  trustHost: true, // 🔥 обязательно для iframe / reverse proxy
 
   pages: {
     signIn: '/auth/signin',
+  },
+
+  // 🔥 Настройка cookies — убираем SameSite=Lax, иначе iframe блокирует
+  cookies: {
+    sessionToken: {
+      name: `__Secure-next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'none', // 🔥 none = работает в iframe
+        path: '/',
+        secure: true,     // 🔥 обязательно при sameSite: none
+      },
+    },
+    callbackUrl: {
+      name: `__Secure-next-auth.callback-url`,
+      options: {
+        httpOnly: true,
+        sameSite: 'none',
+        path: '/',
+        secure: true,
+      },
+    },
+    csrfToken: {
+      name: `__Host-next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'none',
+        path: '/',
+        secure: true,
+      },
+    },
   },
 
   providers: [
@@ -49,6 +81,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           user = await prisma.user.create({ data: { email } });
         }
         return user;
+      },
+    }),
+    Credentials({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null;
+        
+        const bcrypt = await import("bcryptjs");
+        const user = await prisma.user.findUnique({ 
+          where: { email: credentials.email as string } 
+        });
+        if (!user || !user.password) return null;
+        
+        const isValid = await bcrypt.compare(
+          credentials.password as string, 
+          user.password
+        );
+        if (isValid) return user;
+        return null;
       },
     }),
   ],
