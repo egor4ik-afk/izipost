@@ -1,0 +1,27 @@
+{
+    "name": "IziPost — Файловое хранилище",
+    "short_name": "IziPost",
+    "description": "Удобное файловое хранилище для управления медиафайлами и документами",
+    "start_url": "/",
+    "scope": "/",
+    "icons": [
+      {
+        "src": "/web-app-manifest-192x192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "maskable"
+      },
+      {
+        "src": "/web-app-manifest-512x512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "maskable"
+      }
+    ],
+    "theme_color": "#010417",
+    "background_color": "#010417",
+    "display": "standalone",
+    "orientation": "portrait",
+    "lang": "ru",
+    "categories": ["productivity", "utilities"]
+  }
