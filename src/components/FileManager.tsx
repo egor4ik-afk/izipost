@@ -81,7 +81,8 @@ interface Item {
 }
 
 export default function FileManager({ basePath = "" }: { basePath?: string }) {
-  const [path, setPath] = useState<string>(basePath);
+  const [pathStack, setPathStack] = useState<string[]>([basePath]);
+  const path = pathStack[pathStack.length - 1];
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
@@ -94,12 +95,6 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   const [startNumber, setStartNumber] = useState<number>(1);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!path.startsWith(basePath)) {
-      setPath(basePath);
-    }
-  }, [basePath]);
 
   useEffect(() => {
     setSelectedPaths(new Set());
@@ -313,18 +308,10 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   };
 
   const goUp = () => {
-    if (!path || path === basePath) return;
-    
-    const parts = path.split('/').filter(Boolean);
-    parts.pop();
-    const newPath = parts.length ? parts.join('/') + '/' : "";
-    
-    if (newPath.length < basePath.length) {
-       setPath(basePath);
-    } else {
-       setPath(newPath);
-    }
+    if (pathStack.length <= 1) return;
+    setPathStack(prev => prev.slice(0, -1));
   };
+  const canGoUp = pathStack.length > 1;
 
   const copyAllLinks = () => {
     // 🔥 ОБЕРНУЛИ В getCdnUrl
@@ -339,7 +326,7 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
-            <button onClick={goUp} disabled={path === basePath} className="p-2 rounded-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm disabled:opacity-30 hover:bg-slate-50 transition-all">
+            <button onClick={goUp} disabled={!canGoUp} className="p-2 rounded-full bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-sm disabled:opacity-30 hover:bg-slate-50 transition-all">
                 <Icons.Back />
             </button>
             
@@ -459,7 +446,7 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
               </div>
 
               {item.type === 'folder' ? (
-                <div onClick={(e) => { e.stopPropagation(); setPath(item.path); }} className="cursor-pointer p-6 flex-1 flex flex-col items-center justify-center bg-indigo-50/30 dark:bg-zinc-800/30 hover:bg-indigo-50 dark:hover:bg-zinc-800 transition-colors pt-12">
+                <div onClick={(e) => { e.stopPropagation(); setPathStack(prev => [...prev, item.path]); }} className="cursor-pointer p-6 flex-1 flex flex-col items-center justify-center bg-indigo-50/30 dark:bg-zinc-800/30 hover:bg-indigo-50 dark:hover:bg-zinc-800 transition-colors pt-12">
                   <Icons.Folder />
                   <div className="mt-3 font-medium text-slate-700 dark:text-slate-200 text-sm truncate w-full text-center">{item.name}</div>
                 </div>
