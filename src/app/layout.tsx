@@ -1,16 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// ❌ Убрали next/font/google — Google Fonts недоступны при билде в РФ
+// Используем системные шрифты через CSS
 
 export const viewport: Viewport = {
   themeColor: "#010417",
@@ -21,14 +13,17 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://izipost.ru"),
   title: {
-    default: "IziPost — Файловое хранилище",
+    default: "IziPost — Файловое хранилище с CDN",
     template: "%s | IziPost",
   },
-  description: "IziPost — удобное файловое хранилище для управления медиафайлами, изображениями и документами. Быстрая загрузка, CDN, организация по папкам.",
-  keywords: ["файловое хранилище", "загрузка файлов", "CDN", "медиафайлы", "хранилище изображений"],
+  description: "IziPost — файловое хранилище с CDN для проектов. Загружайте файлы до 5 ГБ, получайте CDN-ссылки автоматически. Часть платформы RelaxDev.",
+  keywords: ["файловое хранилище", "загрузка файлов", "CDN", "медиафайлы", "S3"],
   authors: [{ name: "RelaxDev", url: "https://relaxdev.ru" }],
   creator: "RelaxDev",
-  manifest: "/manifest.json",
+  verification: {
+    yandex: '3a209b6e72828f74',
+    google: 'cee020f869c68a59',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -39,14 +34,14 @@ export const metadata: Metadata = {
     locale: "ru_RU",
     url: "https://izipost.ru",
     siteName: "IziPost",
-    title: "IziPost — Файловое хранилище",
-    description: "Удобное файловое хранилище для управления медиафайлами и документами.",
+    title: "IziPost — Файловое хранилище с CDN",
+    description: "Файловое хранилище с CDN для проектов. Часть платформы RelaxDev.",
     images: [{ url: "/og-image.jpg", width: 512, height: 512, alt: "IziPost" }],
   },
   twitter: {
     card: "summary",
-    title: "IziPost — Файловое хранилище",
-    description: "Удобное файловое хранилище для управления медиафайлами.",
+    title: "IziPost — Файловое хранилище с CDN",
+    description: "Файловое хранилище с CDN для проектов.",
     images: ["/og-image.jpg"],
   },
   icons: {
@@ -57,6 +52,7 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
+  manifest: '/manifest.json',
   robots: {
     index: false,
     follow: false,
@@ -69,9 +65,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+    <html lang="ru" suppressHydrationWarning>
+      <body className="antialiased font-sans">
       </body>
     </html>
   );
