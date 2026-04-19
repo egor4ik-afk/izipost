@@ -11,7 +11,9 @@ export default auth((req) => {
   nextUrl.pathname === '/' ||
   nextUrl.pathname.startsWith('/auth') ||
   nextUrl.pathname.startsWith('/api/auth') ||
-  nextUrl.pathname.startsWith('/api/auth/send-otp');
+  nextUrl.pathname.startsWith('/api/') ||
+  nextUrl.pathname.startsWith('/llms.txt') ||
+  /\.(html|xml|txt|json|ico|svg|png|jpg|webp)$/.test(nextUrl.pathname);
   
   if (isPublic) return NextResponse.next();
 
