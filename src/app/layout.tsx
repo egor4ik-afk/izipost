@@ -67,6 +67,7 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className="antialiased font-sans">
+        {children}
       </body>
     </html>
   );
