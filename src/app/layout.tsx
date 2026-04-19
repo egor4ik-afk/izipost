@@ -41,17 +41,21 @@ export const metadata: Metadata = {
     siteName: "IziPost",
     title: "IziPost — Файловое хранилище",
     description: "Удобное файловое хранилище для управления медиафайлами и документами.",
-    images: [{ url: "/web-app-manifest-512x512.png", width: 512, height: 512, alt: "IziPost" }],
+    images: [{ url: "/og-image.jpg", width: 512, height: 512, alt: "IziPost" }],
   },
   twitter: {
     card: "summary",
     title: "IziPost — Файловое хранилище",
     description: "Удобное файловое хранилище для управления медиафайлами.",
-    images: ["/web-app-manifest-512x512.png"],
+    images: ["/og-image.jpg"],
   },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/web-app-manifest-192x192.png",
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-96x96.png', sizes: '96x96', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   robots: {
     index: false,
