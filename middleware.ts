@@ -8,10 +8,11 @@ export default auth((req) => {
 
   // Публичные пути — пускаем всех
   const isPublic =
-    nextUrl.pathname.startsWith('/auth') ||
-    nextUrl.pathname.startsWith('/api/auth') ||
-    nextUrl.pathname.startsWith('/api/auth/send-otp');
-
+  nextUrl.pathname === '/' ||
+  nextUrl.pathname.startsWith('/auth') ||
+  nextUrl.pathname.startsWith('/api/auth') ||
+  nextUrl.pathname.startsWith('/api/auth/send-otp');
+  
   if (isPublic) return NextResponse.next();
 
   // Не залогинен — редирект на signin с callbackUrl
