@@ -1,10 +1,19 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
 export function NavButtons() {
+  const router = useRouter();
+
+  // Не показываем кнопки если мы внутри iframe
+  if (typeof window !== 'undefined' && window.self !== window.top) {
+    return null;
+  }
+
   return (
     <div className="hidden lg:flex fixed bottom-6 left-6 z-50 gap-2">
       <button
-        onClick={() => window.history.back()}
+        onClick={() => router.back()}
         aria-label="Назад"
         className="w-11 h-11 flex items-center justify-center rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all active:scale-95 text-slate-600 dark:text-slate-300"
       >
@@ -13,7 +22,7 @@ export function NavButtons() {
         </svg>
       </button>
       <button
-        onClick={() => window.history.forward()}
+        onClick={() => router.forward()}
         aria-label="Вперёд"
         className="w-11 h-11 flex items-center justify-center rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all active:scale-95 text-slate-600 dark:text-slate-300"
       >
