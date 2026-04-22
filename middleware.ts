@@ -27,5 +27,8 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png$).*)'],
+  matcher: [
+    // Исключаем из middleware пути: статику, картинки, фавиконки, robots.txt и sitemap.xml
+    '/((?!_next/static|_next/image|favicon.ico|robots\\.txt|sitemap\\.xml|.*\\.png$).*)',
+  ],
 };
