@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
-export const maxDuration = 60; 
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    // 1. Проверяем авторизацию (чтобы чужие не дергали наш API)
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -16,40 +15,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'URL is required' }, { status: 400 });
     }
 
-    // 2. Вычисляем папку пользователя и имя файла
+    // Имя файла по пользователю
     const basePath = session.user.isSuperAdmin ? "" : `users/${session.user.email}/`;
-    const fileName = `screenshot-${Date.now()}.jpg`; // Сразу ставим .jpg
-    const s3Key = `${basePath}${fileName}`; // Полный путь для сохранения в S3
+    const fileName = `screenshot-${Date.now()}.jpg`;
+    const s3Key = `${basePath}${fileName}`;
 
-    // 3. Отправляем задачу твоему скриншотеру на Vercel
-    const vercelApiUrl = process.env.VERCEL_SCREENSHOT_API || 'https://relaxcms.vercel.app/api/screenshot';
-
-    const response = await fetch(vercelApiUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        url: url,
-        s3Key: s3Key // 👈 Передаем точный путь для сохранения
-      }),
-    });
+    // Наш сервис вместо Vercel
+    const response = await fetch(
+      `${process.env.SCREENSHOT_SERVICE_URL}/screenshot`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Secret': process.env.SCREENSHOT_API_SECRET || '',
+        },
+        body: JSON.stringify({ url, projectId: s3Key }),
+      }
+    );
 
     const data = await response.json();
 
-    // Проверяем, успешно ли отработал Vercel
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Ошибка на стороне Vercel скриншотера');
+    if (!response.ok || !data.ok) {
+      throw new Error(data.detail || 'Ошибка скриншотера');
     }
 
-    // 4. Возвращаем успешный ответ обратно на клиент
-    return NextResponse.json({ success: true, url: data.url });
-
+    return NextResponse.json({ success: true, url: data.public_url });
   } catch (error: any) {
-    console.error('Ошибка проксирования скриншота:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error?.message || 'Failed to create screenshot via Vercel' 
-    }, { status: 500 });
+    console.error('Ошибка скриншота:', error);
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Failed to create screenshot' },
+      { status: 500 }
+    );
   }
 }
