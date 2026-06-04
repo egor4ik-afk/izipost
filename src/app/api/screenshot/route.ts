@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
     // Имя файла по пользователю
     const basePath = session.user.isSuperAdmin ? "" : `users/${session.user.email}/`;
-    const fileName = `screenshot-${Date.now()}.jpg`;
+    const fileName = `screenshot-${Date.now()}`;
     const s3Key = `${basePath}${fileName}`;
 
     // Наш сервис вместо Vercel
