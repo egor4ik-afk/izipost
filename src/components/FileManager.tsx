@@ -128,7 +128,7 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   const copySelectedLinks = () => {
     const links = items
       .filter(i => selectedPaths.has(i.path) && i.type === 'file' && i.url)
-      .map(i => getCdnUrl(i.url))
+      .map(i => encodeURI(getCdnUrl(i.url)))
       .join('\n');
     if (!links) { alert('Нет ссылок для копирования (выбраны только папки)'); return; }
     navigator.clipboard.writeText(links);
@@ -189,7 +189,7 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   const handleCopySingleLink = (e: React.MouseEvent, url?: string) => {
     e.stopPropagation();
     if (!url) return;
-    navigator.clipboard.writeText(getCdnUrl(url));
+    navigator.clipboard.writeText(encodeURI(getCdnUrl(url)));
     alert('Ссылка на файл скопирована!');
   };
 
@@ -264,7 +264,7 @@ export default function FileManager({ basePath = "" }: { basePath?: string }) {
   };
 
   const copyAllLinks = () => {
-    const links = items.filter(i => i.type === 'file' && i.url).map(i => getCdnUrl(i.url)).join('\n');
+    const links = items.filter(i => i.type === 'file' && i.url).map(i => encodeURI(getCdnUrl(i.url!))).join('\n');
     navigator.clipboard.writeText(links);
     alert('Все ссылки скопированы!');
   };
