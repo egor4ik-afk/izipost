@@ -23,7 +23,13 @@ const BUCKET = process.env.YANDEX_BUCKET_NAME as string;
 
 // Публичные ссылки — через CDN платформы, как в relaxdev (путь = ключ в бакете). При сбое
 // Yandex тот же путь отдаёт https://files.relaxdev.ru
-const CDN_BASE = (process.env.CDN_BASE_URL || "https://cdn.relaxdev.ru").replace(/\/+$/, "");
+// Сборщик платформы подставляет в незаданные *_URL заглушку https://build-stub-domain.com,
+// и она остаётся в .env рантайма — тогда ссылки вели в никуда. Заглушка = «не задано»
+function envUrl(name: string, fallback: string): string {
+  const v = (process.env[name] ?? "").trim();
+  return !v || v.includes("build-stub-domain.com") || v === "auto-generated-stub-for-build" ? fallback : v;
+}
+const CDN_BASE = envUrl("CDN_BASE_URL", "https://cdn.relaxdev.ru").replace(/\/+$/, "");
 
 /** Есть ли в папке хоть один объект */
 export async function hasObjects(prefix: string): Promise<boolean> {
