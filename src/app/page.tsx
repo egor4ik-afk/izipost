@@ -4,6 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import FileManager from "@/components/FileManager";
 import ScreenshotTool from "@/components/ScreenshotTool";
+import { storageUser } from "@/lib/storage-access";
+import { hasObjects } from "@/lib/s3";
 
 export const metadata: Metadata = {
   title: "IziPost — Файловое хранилище с CDN для проектов",
@@ -40,7 +42,7 @@ function FeatureCard({ icon, title, desc }: { icon: React.ReactNode; title: stri
   );
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ root?: string }> }) {
   const session = await auth();
 
   if (!session?.user) {
@@ -258,7 +260,20 @@ export default async function Home() {
 
   // === АВТОРИЗОВАННЫЙ ИНТЕРФЕЙС ===
   const isSuperAdmin = session.user.isSuperAdmin;
-  const basePath = isSuperAdmin ? "" : `users/${session.user.email}/`;
+
+  // Папки пользователя (lib/storage-access): users/<id>/ — новые проекты RelaxDev,
+  // users/<почта>/ — созданные раньше. Есть файлы в обеих — переключатель; в папке по id
+  // пусто, а по почте есть — открываем её, как было до перехода
+  let basePath = "";
+  let roots: null | { current: "id" | "email" } = null;
+  const u = isSuperAdmin ? null : await storageUser();
+  if (u) {
+    const { root } = await searchParams;
+    const [idHas, emailHas] = await Promise.all([hasObjects(u.idRoot), hasObjects(u.emailRoot)]);
+    const current = root === "email" || (root !== "id" && !idHas && emailHas) ? "email" : "id";
+    basePath = current === "email" ? u.emailRoot : u.idRoot;
+    if (emailHas) roots = { current };
+  }
 
   return (
     <main className="min-h-screen bg-white dark:bg-black py-10">
@@ -273,7 +288,17 @@ export default async function Home() {
         </div>
       </div>
       <ScreenshotTool />
-      <FileManager basePath={basePath} />
+      {roots && (
+        <div className="max-w-6xl mx-auto px-4 mb-4 flex gap-2 text-sm">
+          <Link href="/?root=id" className={`px-3 py-1.5 rounded-lg border ${roots.current === "id" ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-slate-200 dark:border-zinc-800 text-slate-500"}`}>
+            Новые проекты
+          </Link>
+          <Link href="/?root=email" className={`px-3 py-1.5 rounded-lg border ${roots.current === "email" ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-slate-200 dark:border-zinc-800 text-slate-500"}`}>
+            Проекты, созданные раньше
+          </Link>
+        </div>
+      )}
+      <FileManager key={basePath} basePath={basePath} />
     </main>
   );
 }

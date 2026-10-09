@@ -15,8 +15,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'URL is required' }, { status: 400 });
     }
 
-    // Имя файла по пользователю
-    const basePath = session.user.isSuperAdmin ? "" : `users/${session.user.email}/`;
+    // Имя файла по пользователю — в его папку по id (без почты в ссылке)
+    const basePath = session.user.isSuperAdmin ? "" : `users/${session.user.id.toLowerCase()}/`;
     const fileName = `screenshot-${Date.now()}`;
     const s3Key = `${basePath}${fileName}`;
 

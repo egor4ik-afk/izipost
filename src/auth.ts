@@ -13,6 +13,11 @@ declare module "next-auth" {
   }
 }
 
+// Неверные коды по почте: после 5 ошибок код сгорает, нужно запросить новый. Без этого
+// 6-значный код перебирался за 10 минут его жизни. Память процесса — izipost один экземпляр
+const OTP_MAX_FAILS = 5;
+const otpFails = new Map<string, number>();
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
@@ -63,20 +68,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.otp) return null;
-        const email = credentials.email as string;
-        const otp = credentials.otp as string;
+        const email = String(credentials.email).trim().toLowerCase();
+        const otp = String(credentials.otp).trim();
 
         const vt = await prisma.verificationToken.findUnique({
           where: { identifier_token: { identifier: email, token: otp } },
         });
 
-        if (!vt || vt.expires < new Date()) return null;
+        if (!vt || vt.expires < new Date()) {
+          const fails = (otpFails.get(email) ?? 0) + 1;
+          if (fails >= OTP_MAX_FAILS) {
+            otpFails.delete(email);
+            await prisma.verificationToken.deleteMany({ where: { identifier: email } });
+          } else {
+            otpFails.set(email, fails);
+          }
+          return null;
+        }
+        otpFails.delete(email);
 
         await prisma.verificationToken.delete({
           where: { identifier_token: { identifier: email, token: otp } },
         });
 
-        let user = await prisma.user.findUnique({ where: { email } });
+        // Почту приводим к нижнему регистру, а в общей таблице User она могла сохраниться
+        // как ввели — ищем без учёта регистра, чтобы не завести второй аккаунт
+        let user = await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
         if (!user) {
           user = await prisma.user.create({ data: { email } });
         }
