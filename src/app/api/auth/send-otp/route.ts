@@ -4,13 +4,29 @@ import { prisma } from "@/lib/prisma";
 import { createTransport } from "nodemailer";
 import crypto from "crypto";
 
+// Новый код — не чаще раза в минуту на почту: иначе роут шлёт письма без ограничений
+const RESEND_MS = 60 * 1000;
+const CODE_TTL_MS = 10 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
-  const { email } = await req.json();
+  const body = await req.json().catch(() => ({}));
+  const email = String(body?.email ?? "").trim().toLowerCase();
   if (!email) return NextResponse.json({ error: "Email обязателен" }, { status: 400 });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return NextResponse.json({ error: "Неверный email" }, { status: 400 });
+  }
+
+  const last = await prisma.verificationToken.findFirst({
+    where: { identifier: email },
+    orderBy: { expires: "desc" },
+  });
+  if (last && last.expires.getTime() - CODE_TTL_MS > Date.now() - RESEND_MS) {
+    return NextResponse.json({ error: "Код уже отправлен, повторить можно через минуту" }, { status: 429 });
+  }
 
   // Генерируем 6-значный код
   const code = crypto.randomInt(100000, 999999).toString();
-  const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 минут
+  const expires = new Date(Date.now() + CODE_TTL_MS); // 10 минут
 
   // Удаляем старые токены для этого email
   await prisma.verificationToken.deleteMany({ where: { identifier: email } });

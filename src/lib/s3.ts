@@ -21,6 +21,20 @@ const s3Client = new S3Client({
 
 const BUCKET = process.env.YANDEX_BUCKET_NAME as string;
 
+// Публичные ссылки — через CDN платформы, как в relaxdev (путь = ключ в бакете). При сбое
+// Yandex тот же путь отдаёт https://files.relaxdev.ru
+const CDN_BASE = (process.env.CDN_BASE_URL || "https://cdn.relaxdev.ru").replace(/\/+$/, "");
+
+/** Есть ли в папке хоть один объект */
+export async function hasObjects(prefix: string): Promise<boolean> {
+  try {
+    const data = await s3Client.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix, MaxKeys: 1 }));
+    return (data.KeyCount ?? data.Contents?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 export { s3Client as s3, BUCKET as bucketName };
 
 // ... (остальные функции) ...
@@ -49,7 +63,7 @@ export async function getFilesByFolder(prefix = "") {
         name: f.Key!.replace(prefix, ""),
         path: f.Key!,
         type: "file" as const,
-        url: `https://storage.yandexcloud.net/${BUCKET}/${f.Key!}`,
+        url: `${CDN_BASE}/${f.Key!}`,
         size: f.Size, // <--- ВОТ ЭТА СТРОЧКА! Передаем размер в байтах
         lastModified: f.LastModified,
       }));

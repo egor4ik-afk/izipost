@@ -3,13 +3,20 @@
 
 import { getFilesByFolder, getDownloadUrlFromS3, uploadFileToS3, deleteFileFromS3, renameFileInS3, renameFolderInS3 } from '@/lib/s3';
 import { revalidatePath } from 'next/cache';
+import { canAccess, requireAccess, storageUser } from '@/lib/storage-access';
+
+// Каждое действие проверяет вход и папку (lib/storage-access): server actions вызываются
+// обычным POST-запросом, и без проверки любой мог читать и менять чужие файлы.
 
 
 export async function fetchFiles(currentPath: string) {
+  const u = await storageUser();
+  if (!canAccess(u, currentPath)) return [];
   return await getFilesByFolder(currentPath);
 }
 export async function getDownloadLink(key: string, fileName: string) {
   try {
+    await requireAccess(key);
     const url = await getDownloadUrlFromS3(key, fileName);
     return { success: true, url };
   } catch (error) {
@@ -32,8 +39,9 @@ export async function uploadFile(formData: FormData) {
     fileName = `${number}.${ext}`;
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const key = folder + fileName;
+  await requireAccess(folder, key);
+  const buffer = Buffer.from(await file.arrayBuffer());
 
   await uploadFileToS3(buffer, key, file.type);
   revalidatePath('/');
@@ -45,11 +53,13 @@ export async function createFolder(formData: FormData) {
   const currentPath = formData.get('currentPath') as string || '';
   if (!folderName) return;
   const key = `${currentPath}${folderName}/`;
+  await requireAccess(currentPath, key);
   await uploadFileToS3(Buffer.from(''), key, 'application/x-directory');
   revalidatePath('/');
 }
 
 export async function deleteFile(key: string) {
+  await requireAccess(key);
   await deleteFileFromS3(key);
   revalidatePath('/');
 }
@@ -71,6 +81,9 @@ export async function renameItem(oldKey: string, newName: string) {
   if (isFolder && !newKey.endsWith('/')) {
     newKey += '/'; // Возвращаем слеш для папки
   }
+
+  // И откуда, и куда — только свои папки (переименование корня вывело бы его наружу)
+  await requireAccess(oldKey, newKey);
 
   if (isFolder) {
     await renameFolderInS3(oldKey, newKey);
