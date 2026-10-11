@@ -29,7 +29,8 @@ function SignInForm() {
     if (res.ok) {
       setStep('code');
     } else {
-      setError('Не удалось отправить код. Попробуйте ещё раз.');
+      const data = await res.json().catch(() => ({}));
+      setError(data?.error || 'Не удалось отправить код. Попробуйте ещё раз.');
     }
   };
 
