@@ -66,7 +66,7 @@ function SignInForm() {
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Email адрес</label>
               <input
-                id="email" type="email" placeholder="you@example.com" required
+                id="email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required
                 value={email} onChange={(e) => setEmail(e.target.value)} disabled={loading}
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               />
@@ -92,7 +92,7 @@ function SignInForm() {
             <div>
               <label htmlFor="code" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Код из письма</label>
               <input
-                id="code" type="text" inputMode="numeric" placeholder="123456"
+                id="code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" placeholder="123456"
                 required maxLength={6} value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} disabled={loading}
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-center text-2xl font-bold tracking-widest"
