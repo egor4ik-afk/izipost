@@ -4,9 +4,9 @@
 //
 // SMTP Яндекса временами не отвечает на подключение вовсе (ETIMEDOUT, command CONN) —
 // и на 587, и на 465, десятки минут. Поэтому основной (EMAIL_*) ждём 5 секунд, дальше
-// письмо уходит через запасной ящик (Gmail): EMAIL_FALLBACK_URL = smtp://логин:пароль@хост:порт
-// или EMAIL_FALLBACK_HOST / _PORT / _USER / _PASS. Через запасной письмо идёт от его адреса
-// (Gmail подменяет чужой From), имя отправителя то же, ответы — на основной ящик.
+// письмо уходит через запасной ящик (Gmail): EMAIL_FALLBACK_URL = smtp://логин:пароль@хост:порт.
+// Через запасной письмо идёт от его адреса (Gmail подменяет чужой From), имя отправителя
+// то же, ответы — на основной ящик.
 // Запасного нет — повтор основного другим портом (465 ↔ 587).
 
 import nodemailer, { type SendMailOptions, type Transporter } from "nodemailer";
@@ -24,23 +24,25 @@ const primary: Box = {
   pass: process.env.EMAIL_PASS,
 };
 
+// Запасной ящик — одна переменная EMAIL_FALLBACK_URL. Читаем через process.env["…"]:
+// для записи через точку сборщик платформы подставляет заглушку, когда переменной нет
+// (https://build-stub-domain.com), и она жила бы и в работающем приложении
+const BUILD_STUB = /build-stub-domain\.com|auto-generated-stub-for-build/;
+
 function fallbackBox(): Box | null {
-  const url = process.env.EMAIL_FALLBACK_URL;
-  if (url) {
-    try {
-      const u = new URL(url);
-      return {
-        name: "запасной", host: u.hostname, port: Number(u.port) || 587,
-        user: decodeURIComponent(u.username), pass: decodeURIComponent(u.password).replace(/\s+/g, ""),
-      };
-    } catch {
-      console.warn("[mail] EMAIL_FALLBACK_URL не разобран — запасной SMTP выключен");
-    }
+  const url = (process.env["EMAIL_FALLBACK_URL"] ?? "").trim();
+  if (!url || BUILD_STUB.test(url)) return null;
+  try {
+    const u = new URL(url);
+    return {
+      name: "запасной", host: u.hostname, port: Number(u.port) || 587,
+      // Пароль приложения Google показывают группами через пробел — пробелы не нужны
+      user: decodeURIComponent(u.username), pass: decodeURIComponent(u.password).replace(/\s+/g, ""),
+    };
+  } catch {
+    console.warn("[mail] EMAIL_FALLBACK_URL не разобран — запасной SMTP выключен");
+    return null;
   }
-  const { EMAIL_FALLBACK_HOST: host, EMAIL_FALLBACK_USER: user, EMAIL_FALLBACK_PASS: pass } = process.env;
-  if (!host || !user || !pass) return null;
-  // Пароль приложения Google показывают группами через пробел — пробелы не нужны
-  return { name: "запасной", host, port: Number(process.env.EMAIL_FALLBACK_PORT) || 587, user, pass: pass.replace(/\s+/g, "") };
 }
 
 function smtp(box: Box, waitMs: number): Transporter {
